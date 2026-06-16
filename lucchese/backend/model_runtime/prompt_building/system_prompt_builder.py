@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from context.context_result import ContextResult
 
 BASE_PERSONA = """You are Lucchese, the personal AI of Alex Hammond.
 
@@ -58,39 +57,14 @@ programmes, checklists, reports). Not for short conversational answers."""
 
 
 def build_system_prompt(
-    ctx: ContextResult | None,
     web_context: str,
     sheets_context: str = "",
 ) -> str:
     """Assemble the system prompt from a ContextResult plus optional live data."""
-    if ctx is None:
-        ctx = ContextResult()
 
     now = datetime.now().strftime("%A, %d %B %Y")
     sections = [f"Today's date is {now}.", BASE_PERSONA]
 
-    if ctx.tier1_block:
-        sections.append(f"""CURRENT FACTS ABOUT ALEX — TREAT AS GROUND TRUTH:
-These are verified, up-to-date facts. Do not frame them as things Alex "mentioned" or "said".
-Use them to ground every response.
-
-If CURRENT FACTS conflict with BACKGROUND KNOWLEDGE, CURRENT FACTS always win.
-BACKGROUND KNOWLEDGE may be historical and must not be treated as current unless it agrees with CURRENT FACTS.
-Do not describe old courses, old goals, or old projects as current unless they appear in CURRENT FACTS.
-
-{ctx.tier1_block}""")
-
-    if ctx.tier2_block:
-        sections.append(f"""BACKGROUND KNOWLEDGE ABOUT ALEX:
-The following is drawn from Alex's past conversations. This is your existing knowledge of him — not something to report back, but something you already know.
-Do NOT say "you mentioned" or "you said" or "you talked about". You simply know this about Alex.
-Do NOT quote it back. Reason from it. Let it shape how you respond, what you assume, what you challenge.
-If Alex asks what you know about a topic, answer as someone who already knows him — not as someone reading a file back to him.
-
---- Context ---
-{ctx.tier2_block}
-
----""")
 
     if sheets_context:
         sections.append(f"""Live data from PTPREPS Google Sheets:

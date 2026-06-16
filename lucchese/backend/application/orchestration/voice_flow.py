@@ -21,15 +21,8 @@ from fastapi import UploadFile
 from audio.speech.speech_response import synthesise_reply
 from audio.transcription.transcribe_audio import transcribe_audio
 from config.model_settings import MODEL_FAST, VOICE_MAX_TOKENS
-from context.context_builder import build_context
-from memory.ingestion.exchange_ingestor import ingest_exchange
-from memory.ingestion.ingest_policy import should_ingest
 from model_runtime.clients import llm_client
 from model_runtime.prompt_building.system_prompt_builder import build_system_prompt
-from storage.sqlite.repositories.message_repository import (
-    get_conversation_history,
-    save_message,
-)
 
 
 async def run_voice_chat(file: UploadFile, conversation_id: str | None) -> dict:
@@ -40,22 +33,14 @@ async def run_voice_chat(file: UploadFile, conversation_id: str | None) -> dict:
 
     conv_id = conversation_id or str(uuid.uuid4())
 
-    ctx = await build_context(user_text)
-    system = build_system_prompt(ctx, "", "")
+    system = build_system_prompt( "", "")
 
-    history = get_conversation_history(conv_id, limit=20)
     messages = [{"role": "system", "content": system}]
-    messages += history
     messages.append({"role": "user", "content": user_text})
 
     reply_text = await llm_client.complete(
         messages, model=MODEL_FAST, max_tokens=VOICE_MAX_TOKENS
     )
-
-    save_message(conv_id, "user", user_text)
-    save_message(conv_id, "assistant", reply_text)
-    if should_ingest(user_text, reply_text):
-        await ingest_exchange(conv_id, user_text, reply_text)
 
     audio_bytes = synthesise_reply(reply_text)
 

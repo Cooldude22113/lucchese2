@@ -27,7 +27,6 @@ from typing import Optional
 
 from config.paths import CHROMA_PATH, CONVERSATIONS_DB, STATE_DB
 from observability.logging_config import configure_startup_logger
-from storage.sqlite.schema import EXPECTED_CONVERSATIONS_TABLES, EXPECTED_STATE_TABLES
 
 configure_startup_logger()
 _log = logging.getLogger("lucchese.startup")
@@ -88,9 +87,6 @@ class StartupValidationResult:
         )
 
 
-# ── Canonical schema (single source: storage/sqlite/schema.py) ────────────────
-CANONICAL_STATE_SCHEMA = EXPECTED_STATE_TABLES
-CANONICAL_CONVERSATION_SCHEMA = EXPECTED_CONVERSATIONS_TABLES
 
 # ── Environment variable catalogue ────────────────────────────────────────────
 REQUIRED_ENV_VARS: list[str] = ["CHAT_PROVIDER"]
@@ -440,88 +436,7 @@ def run_startup_validation() -> StartupValidationResult:
     # 1. Environment
     all_checks.extend(check_environment())
 
-    # 2. SQLite connectivity
-    state_conn_result = check_sqlite_connectivity(_STATE_DB_PATH, "sqlite.state_db.connectivity")
-    all_checks.append(state_conn_result)
-    state_db_ok = state_conn_result.status == "ok"
-
-    conv_conn_result = check_sqlite_connectivity(
-        _CONVERSATIONS_DB_PATH, "sqlite.conversations_db.connectivity"
-    )
-    all_checks.append(conv_conn_result)
-    conv_db_ok = conv_conn_result.status == "ok"
-
-    # 3. Required tables present
-    state_tables_present: set[str] = set()
-    conv_tables_present: set[str] = set()
-
-    if state_db_ok:
-        state_table_results = check_required_tables(
-            _STATE_DB_PATH, CANONICAL_STATE_SCHEMA, "sqlite.state_db"
-        )
-        all_checks.extend(state_table_results)
-        for r in state_table_results:
-            if r.status == "ok":
-                parts = r.check_name.split(".")
-                if len(parts) >= 4:
-                    state_tables_present.add(parts[3])
-    else:
-        checks_skipped += len(CANONICAL_STATE_SCHEMA)
-        for table_name in CANONICAL_STATE_SCHEMA:
-            all_checks.append(_skip(f"sqlite.state_db.table.{table_name}",
-                                    "state DB connectivity failed"))
-
-    if conv_db_ok:
-        conv_table_results = check_required_tables(
-            _CONVERSATIONS_DB_PATH, CANONICAL_CONVERSATION_SCHEMA, "sqlite.conversations_db"
-        )
-        all_checks.extend(conv_table_results)
-        for r in conv_table_results:
-            if r.status == "ok":
-                parts = r.check_name.split(".")
-                if len(parts) >= 4:
-                    conv_tables_present.add(parts[3])
-    else:
-        checks_skipped += len(CANONICAL_CONVERSATION_SCHEMA)
-        for table_name in CANONICAL_CONVERSATION_SCHEMA:
-            all_checks.append(_skip(f"sqlite.conversations_db.table.{table_name}",
-                                    "conversations DB connectivity failed"))
-
-    # 4. Schema integrity
-    if state_db_ok:
-        all_checks.extend(check_state_schema(
-            _STATE_DB_PATH, CANONICAL_STATE_SCHEMA, state_tables_present, "sqlite.state_db"
-        ))
-    else:
-        checks_skipped += len(CANONICAL_STATE_SCHEMA)
-        for table_name in CANONICAL_STATE_SCHEMA:
-            all_checks.append(_skip(f"sqlite.state_db.schema.{table_name}",
-                                    "state DB connectivity failed"))
-
-    if conv_db_ok:
-        all_checks.extend(check_state_schema(
-            _CONVERSATIONS_DB_PATH, CANONICAL_CONVERSATION_SCHEMA,
-            conv_tables_present, "sqlite.conversations_db"
-        ))
-    else:
-        checks_skipped += len(CANONICAL_CONVERSATION_SCHEMA)
-        for table_name in CANONICAL_CONVERSATION_SCHEMA:
-            all_checks.append(_skip(f"sqlite.conversations_db.schema.{table_name}",
-                                    "conversations DB connectivity failed"))
-
-    # 5. profile_state row presence
-    profile_schema_ok = any(
-        r.check_name == "sqlite.state_db.schema.profile_state" and r.status == "ok"
-        for r in all_checks
-    )
-    if state_db_ok:
-        all_checks.append(check_profile_state_row(_STATE_DB_PATH, profile_schema_ok))
-    else:
-        checks_skipped += 1
-        all_checks.append(_skip("state.profile_state.row_presence",
-                                "state DB connectivity failed"))
-
-    # 6. ChromaDB connectivity
+    # 2. ChromaDB connectivity
     all_checks.append(check_chromadb_connectivity(_CHROMA_PATH))
 
     # Aggregate
